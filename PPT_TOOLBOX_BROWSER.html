@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PPT TOOLBOX</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Segoe UI,Arial,sans-serif;color:#fff;background:radial-gradient(circle at 15% 10%,#57218c55,transparent 35%),linear-gradient(135deg,#08030f,#1a0930 55%,#07040d)}
+.wrap{max-width:1180px;margin:auto;padding:38px 22px}.glass{background:#ffffff0d;border:1px solid #ffffff18;border-radius:24px;box-shadow:0 20px 70px #0008;backdrop-filter:blur(18px)}
+header{text-align:center;margin-bottom:30px}h1{font-size:42px;margin:8px 0}.sub{color:#cdbde0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}
+.card{padding:25px;cursor:pointer;transition:.2s}.card:hover{transform:translateY(-5px);background:#9b4dff1c}.ico{font-size:38px}.card h2{margin:10px 0 7px}.card p{color:#c7bdd2;min-height:42px}
+.page{display:none}.page.active{display:block}.top{display:flex;align-items:center;gap:15px;margin-bottom:18px}.top h2{flex:1}.btn{border:0;border-radius:12px;padding:12px 18px;background:#8b45ff;color:#fff;font-weight:700;cursor:pointer}.btn:hover{background:#a86cff}.back{background:#ffffff12;border:1px solid #ffffff20}
+.box{padding:28px}.drop{border:2px dashed #8b45ff;border-radius:18px;padding:30px;text-align:center;margin:20px 0}.drop input{display:none}.drop label{display:inline-block;background:#8b45ff;padding:13px 20px;border-radius:11px;cursor:pointer}.files{margin-top:15px;text-align:left;color:#d8cde3;white-space:pre-wrap}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}input,select,textarea{background:#ffffff0c;color:#fff;border:1px solid #ffffff20;border-radius:10px;padding:12px;outline:none;font:inherit}textarea{width:100%;min-height:90px;margin-bottom:12px}input::placeholder,textarea::placeholder{color:#aaa}
+.notice{padding:15px;border-radius:14px;background:#6b39a51c;border:1px solid #8b45ff55;color:#ddd;margin:15px 0}.result{margin-top:18px;padding:18px;background:#050208;border-radius:14px;white-space:pre-wrap;color:#caffdf}
+.li{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid #ffffff12}.li button{background:#ffffff14;color:#fff;border:0;border-radius:6px;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header id="header"><h1>🧰 PPT TOOLBOX</h1><div class="sub">100% Browser • Works Offline • No Server • No Libraries</div></header>
+<section id="menu" class="grid">
+<div class="glass card" onclick="page('create')"><div class="ico">📊</div><h2>Create PPT</h2><p>Create a PowerPoint directly in your browser.</p></div>
+<div class="glass card" onclick="page('images')"><div class="ico">🖼️</div><h2>Images → PPT</h2><p>Turn selected images into a presentation.</p></div>
+<div class="glass card" onclick="page('merge')"><div class="ico">🧩</div><h2>Merge PPTs</h2><p>Combine any PPTX files into one.</p></div>
+<div class="glass card" onclick="page('remove')"><div class="ico">🗑️</div><h2>Remove Slides</h2><p>Remove slides from any PPTX.</p></div>
+<div class="glass card" onclick="page('reorder')"><div class="ico">🔀</div><h2>Reorder Slides</h2><p>Change the order of slides in any PPTX.</p></div>
+<div class="glass card" onclick="page('info')"><div class="ico">📄</div><h2>PPT Info</h2><p>Inspect any PPTX file.</p></div>
+</section>
+<section id="tool" class="page"></section>
+</div>
+
+<script>
+/* Browser-only: own ZIP reader/writer (uses built-in DecompressionStream), real PPTX package editing. */
+const PNS="http://schemas.openxmlformats.org/presentationml/2006/main",ANS="http://schemas.openxmlformats.org/drawingml/2006/main",
+RNS="http://schemas.openxmlformats.org/officeDocument/2006/relationships",PR="http://schemas.openxmlformats.org/package/2006/relationships",
+CT="http://schemas.openxmlformats.org/package/2006/content-types",PP="ppt/presentation.xml",CTP="[Content_Types].xml",
+MIME="application/vnd.openxmlformats-officedocument.presentationml.presentation",XH='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const $=id=>document.getElementById(id),enc=s=>new TextEncoder().encode(s),dec=b=>new TextDecoder().decode(b);
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const parse=s=>new DOMParser().parseFromString(s,"application/xml"),ser=d=>enc(new XMLSerializer().serializeToString(d));
+const tags=(n,x)=>[...n.getElementsByTagNameNS("*",x)];
+let proj=[],cur=null;
+
+/* ---------- ZIP ---------- */
+const CRCT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc=a=>{let c=~0;for(let i=0;i<a.length;i++)c=CRCT[(c^a[i])&255]^(c>>>8);return(~c)>>>0};
+async function inflate(u){return new Uint8Array(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer())}
+async function zipRead(buf){const u=new Uint8Array(buf),v=new DataView(buf);let e=u.length-22;while(e>=0&&v.getUint32(e,true)!==0x06054b50)e--;
+ if(e<0)throw Error("Not a valid PPTX file.");const n=v.getUint16(e+10,true);let p=v.getUint32(e+16,true);const m=new Map();
+ for(let i=0;i<n;i++){const meth=v.getUint16(p+10,true),cs=v.getUint32(p+20,true),nl=v.getUint16(p+28,true),xl=v.getUint16(p+30,true),cl=v.getUint16(p+32,true),lo=v.getUint32(p+42,true),name=dec(u.subarray(p+46,p+46+nl));
+  p+=46+nl+xl+cl;if(name.endsWith("/"))continue;const ds=lo+30+v.getUint16(lo+26,true)+v.getUint16(lo+28,true),raw=u.subarray(ds,ds+cs);
+  if(meth===0)m.set(name,raw.slice());else if(meth===8)m.set(name,await inflate(raw));else throw Error("Unsupported ZIP compression.")}
+ return m}
+function zipWrite(m0){const m=new Map([[CTP,m0.get(CTP)],...m0]),parts=[],cen=[];let off=0;
+ for(const[n,d]of m){const nb=enc(n),c=crc(d),h=new Uint8Array(30+nb.length),v=new DataView(h.buffer);
+  v.setUint32(0,0x04034b50,true);v.setUint16(4,20,true);v.setUint16(6,0x800,true);v.setUint32(14,c,true);v.setUint32(18,d.length,true);v.setUint32(22,d.length,true);v.setUint16(26,nb.length,true);h.set(nb,30);
+  const g=new Uint8Array(46+nb.length),w=new DataView(g.buffer);
+  w.setUint32(0,0x02014b50,true);w.setUint16(4,20,true);w.setUint16(6,20,true);w.setUint16(8,0x800,true);w.setUint32(16,c,true);w.setUint32(20,d.length,true);w.setUint32(24,d.length,true);w.setUint16(28,nb.length,true);w.setUint32(42,off,true);g.set(nb,46);
+  parts.push(h,d);cen.push(g);off+=h.length+d.length}
+ const sz=cen.reduce((a,x)=>a+x.length,0),e=new Uint8Array(22),ev=new DataView(e.buffer);
+ ev.setUint32(0,0x06054b50,true);ev.setUint16(8,m.size,true);ev.setUint16(10,m.size,true);ev.setUint32(12,sz,true);ev.setUint32(16,off,true);
+ return new Blob([...parts,...cen,e],{type:MIME})}
+
+/* ---------- package helpers ---------- */
+const dir=p=>p.slice(0,p.lastIndexOf("/")+1),relOf=p=>dir(p)+"_rels/"+p.slice(p.lastIndexOf("/")+1)+".rels";
+function resolve(from,t){if(t[0]==="/")return t.slice(1);const o=[];for(const s of(dir(from)+t).split("/")){if(s==="..")o.pop();else if(s&&s!==".")o.push(s)}return o.join("/")}
+function relative(from,to){const a=dir(from).split("/").filter(Boolean),b=to.split("/");let i=0;while(i<a.length&&i<b.length-1&&a[i]===b[i])i++;return"../".repeat(a.length-i)+b.slice(i).join("/")}
+function getRels(m,part){const f=m.get(relOf(part));if(!f)return[];return tags(parse(dec(f)),"Relationship").map(e=>({id:e.getAttribute("Id"),type:e.getAttribute("Type"),ext:e.getAttribute("TargetMode")==="External",abs:resolve(part,e.getAttribute("Target"))}))}
+function pres(m){if(!m.has(PP))throw Error("This is not a PowerPoint (.pptx) file.");const doc=parse(dec(m.get(PP))),rl=getRels(m,PP);
+ const list=tags(doc,"sldId").filter(e=>e.parentNode.localName==="sldIdLst").map(e=>{const rid=e.getAttributeNS(RNS,"r:id")||e.getAttributeNS(RNS,"id");const r=rl.find(x=>x.id===rid);return{el:e,rid,part:r&&r.abs}});return{doc,list}}
+const stripSections=d=>tags(d,"sectionLst").forEach(s=>s.parentNode.remove());
+function prune(m){const seen=new Set(),q=[""];while(q.length){const p=q.pop();for(const r of getRels(m,p))if(!r.ext&&m.has(r.abs)&&!seen.has(r.abs)){seen.add(r.abs);q.push(r.abs)}}
+ for(const k of[...m.keys()]){if(k===CTP)continue;if(k.endsWith(".rels")){const o=k.replace(/_rels\/([^/]+)\.rels$/,"$1");if(o!==""&&!seen.has(o)&&k!=="_rels/.rels")m.delete(k)}else if(!seen.has(k))m.delete(k)}
+ const ct=parse(dec(m.get(CTP)));tags(ct,"Override").forEach(e=>{if(!m.has(e.getAttribute("PartName").slice(1)))e.remove()});m.set(CTP,ser(ct))}
+function slideInfo(m,part){const d=parse(dec(m.get(part)));let t="";for(const sp of tags(d,"sp"))if(tags(sp,"ph").some(p=>/title/i.test(p.getAttribute("type")||""))){t=tags(sp,"t").map(x=>x.textContent).join(" ");break}
+ if(!t){const f=tags(d,"t")[0];t=f?f.textContent:""}return{title:t.trim()||(tags(d,"pic").length?"[Picture]":"(no text)"),words:tags(d,"t").map(x=>x.textContent).join(" ").split(/\s+/).filter(Boolean).length}}
+
+/* ---------- remove / reorder / merge ---------- */
+function doRemove(m,set){const{doc,list}=pres(m);if(set.size>=list.length)throw Error("You can't remove every slide.");
+ const rd=parse(dec(m.get(relOf(PP))));list.forEach((s,i)=>{if(!set.has(i+1))return;s.el.remove();const r=tags(rd,"Relationship").find(e=>e.getAttribute("Id")===s.rid);if(r)r.remove()});
+ stripSections(doc);m.set(PP,ser(doc));m.set(relOf(PP),ser(rd));prune(m)}
+function doReorder(m,order){const{doc,list}=pres(m),p=list[0].el.parentNode,els=list.map(s=>s.el);els.forEach(e=>e.remove());order.forEach(n=>p.appendChild(els[n-1]));stripSections(doc);m.set(PP,ser(doc))}
+function mergeInto(d,s,k){const sp=pres(s),dp=pres(d),map=new Map(),q=[];
+ const add=p=>{if(p&&!map.has(p)&&s.has(p)){map.set(p,dir(p)+"m"+k+"_"+p.slice(p.lastIndexOf("/")+1));q.push(p)}};
+ sp.list.forEach(x=>add(x.part));
+ while(q.length){const p=q.pop();for(const r of getRels(s,p)){if(r.ext||/\/(notesSlide|slide)$/.test(r.type))continue;add(r.abs)}}
+ const sct=parse(dec(s.get(CTP))),dct=parse(dec(d.get(CTP))),ov={},df={};
+ tags(sct,"Override").forEach(e=>ov[e.getAttribute("PartName")]=e.getAttribute("ContentType"));tags(sct,"Default").forEach(e=>df[e.getAttribute("Extension").toLowerCase()]=e.getAttribute("ContentType"));
+ const hasDef=new Set(tags(dct,"Default").map(e=>e.getAttribute("Extension").toLowerCase()));
+ const used=[];for(const[p,v]of d)if(p===PP||/slideMasters\/[^/]+\.xml$/.test(p))for(const t of dec(v).match(/<p:sld(?:Layout|Master)Id\b[^>]*>/g)||[]){const x=t.match(/\sid="(\d+)"/);if(x)used.push(+x[1])}
+ let idc=Math.max(2147483648,...used)+1;const masters=[];
+ for(const[p,np]of map){let data=s.get(p);
+  if(/slideMasters\/[^/]+\.xml$/.test(p)){data=enc(dec(data).replace(/(<p:sldLayoutId\b[^>]*?\s)id="\d+"/g,(a,b)=>b+'id="'+(idc++)+'"'));masters.push(np)}
+  d.set(np,data);const rf=s.get(relOf(p));
+  if(rf){const rd=parse(dec(rf));for(const e of tags(rd,"Relationship")){if(e.getAttribute("TargetMode")==="External")continue;const a=resolve(p,e.getAttribute("Target"));if(map.has(a))e.setAttribute("Target",relative(np,map.get(a)));else e.remove()}d.set(relOf(np),ser(rd))}
+  if(ov["/"+p]){const e=dct.createElementNS(CT,"Override");e.setAttribute("PartName","/"+np);e.setAttribute("ContentType",ov["/"+p]);dct.documentElement.appendChild(e)}
+  else{const x=p.split(".").pop().toLowerCase();if(!hasDef.has(x)&&df[x]){const e=dct.createElementNS(CT,"Default");e.setAttribute("Extension",x);e.setAttribute("ContentType",df[x]);dct.documentElement.insertBefore(e,dct.documentElement.firstChild);hasDef.add(x)}}}
+ const rd=parse(dec(d.get(relOf(PP)))),pd=dp.doc;
+ const addRel=(id,type,t)=>{const e=rd.createElementNS(PR,"Relationship");e.setAttribute("Id",id);e.setAttribute("Type",type);e.setAttribute("Target",t);rd.documentElement.appendChild(e)};
+ let ml=tags(pd,"sldMasterIdLst")[0];
+ masters.forEach((np,i)=>{const id="rIdM"+k+"_"+i;addRel(id,RNS+"/slideMaster",relative(PP,np));const e=pd.createElementNS(PNS,"p:sldMasterId");e.setAttribute("id",idc++);e.setAttributeNS(RNS,"r:id",id);ml.appendChild(e)});
+ let sl=tags(pd,"sldIdLst")[0];if(!sl){sl=pd.createElementNS(PNS,"p:sldIdLst");ml.after(sl)}
+ let sid=Math.max(255,...dp.list.map(x=>+x.el.getAttribute("id")))+1;
+ sp.list.forEach((x,i)=>{if(!x.part)return;const id="rIdS"+k+"_"+i;addRel(id,RNS+"/slide",relative(PP,map.get(x.part)));const e=pd.createElementNS(PNS,"p:sldId");e.setAttribute("id",sid++);e.setAttributeNS(RNS,"r:id",id);sl.appendChild(e)});
+ d.set(PP,ser(pd));d.set(relOf(PP),ser(rd));d.set(CTP,ser(dct))}
+
+/* ---------- build a new presentation ---------- */
+const SW=12192000,SH=6858000,HN=`xmlns:a="${ANS}" xmlns:r="${RNS}" xmlns:p="${PNS}"`;
+const GRP='<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>';
+function theme(){const fill='<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>',f='<a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/>';
+ const c="dk1:000000,lt1:FFFFFF,dk2:1A0930,lt2:EDE4F7,accent1:8B45FF,accent2:A86CFF,accent3:57218C,accent4:C9A7FF,accent5:5B8DEF,accent6:E86AC1,hlink:A86CFF,folHlink:C9A7FF".split(",").map(x=>{const[n,v]=x.split(":");return`<a:${n}><a:srgbClr val="${v}"/></a:${n}>`}).join("");
+ return`${XH}<a:theme xmlns:a="${ANS}" name="Toolbox"><a:themeElements><a:clrScheme name="T">${c}</a:clrScheme><a:fontScheme name="F"><a:majorFont>${f}</a:majorFont><a:minorFont>${f}</a:minorFont></a:fontScheme><a:fmtScheme name="M"><a:fillStyleLst>${fill.repeat(3)}</a:fillStyleLst><a:lnStyleLst>${`<a:ln w="9525">${fill}</a:ln>`.repeat(3)}</a:lnStyleLst><a:effectStyleLst>${"<a:effectStyle><a:effectLst/></a:effectStyle>".repeat(3)}</a:effectStyleLst><a:bgFillStyleLst>${fill.repeat(3)}</a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`}
+const ph=(id,name,t,x,y,w,h,txt)=>`<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${name}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph ${t}/></p:nvPr></p:nvSpPr><p:spPr>${x==null?"":`<a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>`}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>${txt}</p:txBody></p:sp>`;
+const P=t=>`<a:p><a:r><a:rPr lang="en-US"/><a:t>${esc(t)}</a:t></a:r></a:p>`;
+function master(){const lv=(sz,b)=>`<a:lvl1pPr marL="0" indent="0" algn="l"><a:buNone/><a:defRPr sz="${sz}" b="${b}"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:latin typeface="Calibri"/></a:defRPr></a:lvl1pPr>`;
+ return`${XH}<p:sldMaster ${HN}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="1A0930"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree>${GRP}${ph(2,"Title","type=\"title\"",838200,365125,10515600,1325563,P("Title"))}${ph(3,"Body",'type="body" idx="1"',838200,1825625,10515600,4351338,P("Text"))}</p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle>${lv(4000,1)}</p:titleStyle><p:bodyStyle>${lv(2400,0)}</p:bodyStyle><p:otherStyle>${lv(1800,0)}</p:otherStyle></p:txStyles></p:sldMaster>`}
+const rels=a=>`${XH}<Relationships xmlns="${PR}">${a.map(([i,t,g])=>`<Relationship Id="${i}" Type="${RNS}/${t}" Target="${g}"/>`).join("")}</Relationships>`;
+function buildDeck(slides){if(!slides.length)throw Error("Add at least one slide first.");const m=new Map(),S=(k,v)=>m.set(k,typeof v==="string"?enc(v):v);
+ const ov=[["/ppt/presentation.xml","presentationml.presentation.main"],["/ppt/slideMasters/slideMaster1.xml","presentationml.slideMaster"],["/ppt/slideLayouts/slideLayout1.xml","presentationml.slideLayout"],["/ppt/theme/theme1.xml","theme"]].map(([p,t])=>[p,t==="theme"?"application/vnd.openxmlformats-officedocument.theme+xml":`application/vnd.openxmlformats-officedocument.${t}+xml`]);
+ slides.forEach((_,i)=>ov.push([`/ppt/slides/slide${i+1}.xml`,"application/vnd.openxmlformats-officedocument.presentationml.slide+xml"]));
+ S(CTP,`${XH}<Types xmlns="${CT}"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/>${ov.map(([p,t])=>`<Override PartName="${p}" ContentType="${t}"/>`).join("")}</Types>`);
+ S("_rels/.rels",rels([["rId1","officeDocument","ppt/presentation.xml"]]));
+ S(PP,`${XH}<p:presentation ${HN}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${slides.map((_,i)=>`<p:sldId id="${256+i}" r:id="rId${i+3}"/>`).join("")}</p:sldIdLst><p:sldSz cx="${SW}" cy="${SH}"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`);
+ S("ppt/_rels/presentation.xml.rels",rels([["rId1","slideMaster","slideMasters/slideMaster1.xml"],["rId2","theme","theme/theme1.xml"],...slides.map((_,i)=>[`rId${i+3}`,"slide",`slides/slide${i+1}.xml`])]));
+ S("ppt/theme/theme1.xml",theme());S("ppt/slideMasters/slideMaster1.xml",master());
+ S("ppt/slideMasters/_rels/slideMaster1.xml.rels",rels([["rId1","slideLayout","../slideLayouts/slideLayout1.xml"],["rId2","theme","../theme/theme1.xml"]]));
+ S("ppt/slideLayouts/slideLayout1.xml",`${XH}<p:sldLayout ${HN} type="obj"><p:cSld name="Title and Content"><p:spTree>${GRP}${ph(2,"Title",'type="title"',null,0,0,0,"<a:p><a:endParaRPr lang=\"en-US\"/></a:p>")}${ph(3,"Body",'idx="1"',null,0,0,0,"<a:p><a:endParaRPr lang=\"en-US\"/></a:p>")}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`);
+ S("ppt/slideLayouts/_rels/slideLayout1.xml.rels",rels([["rId1","slideMaster","../slideMasters/slideMaster1.xml"]]));
+ slides.forEach((s,i)=>{const n=i+1,r=[["rId1","slideLayout","../slideLayouts/slideLayout1.xml"]];let shapes;
+  if(s.img){const k=s.img,sc=Math.min(SW/k.w,SH/k.h),cx=Math.round(k.w*sc),cy=Math.round(k.h*sc);S(`ppt/media/image${n}.${k.ext}`,k.bytes);r.push(["rId2","image",`../media/image${n}.${k.ext}`]);
+   shapes=`<p:pic><p:nvPicPr><p:cNvPr id="2" name="Picture ${n}" descr="${esc(s.title||"")}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="${Math.round((SW-cx)/2)}" y="${Math.round((SH-cy)/2)}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`}
+  else shapes=ph(2,"Title",'type="title"',null,0,0,0,P(s.title))+(s.body?ph(3,"Body",'idx="1"',null,0,0,0,s.body.split(/\r?\n/).map(P).join("")):"");
+  S(`ppt/slides/slide${n}.xml`,`${XH}<p:sld ${HN}><p:cSld><p:spTree>${GRP}${shapes}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`);
+  S(`ppt/slides/_rels/slide${n}.xml.rels`,rels(r))});
+ return zipWrite(m)}
+async function prep(f){const url=URL.createObjectURL(f);try{const im=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>no(Error("Can't read image: "+f.name));i.src=url});
+ const w=im.naturalWidth,h=im.naturalHeight;let ext=f.type==="image/png"?"png":f.type==="image/jpeg"?"jpeg":null,bytes;
+ if(ext)bytes=new Uint8Array(await f.arrayBuffer());else{const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(im,0,0);bytes=new Uint8Array(await(await new Promise(r=>c.toBlob(r,"image/png"))).arrayBuffer());ext="png"}
+ return{bytes,ext,w,h}}finally{URL.revokeObjectURL(url)}}
+
+/* ---------- UI ---------- */
+const dl=(b,n)=>{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)};
+const show=(s,ok)=>{const r=$("result");r.innerHTML='<div class="result"></div>';r.firstChild.textContent=(ok?"✅ ":"")+s};
+const run=async f=>{try{await f()}catch(e){show("⚠ "+e.message)}};
+const outName=()=>cur.name.replace(/\.pptx$/i,"")+"_edited.pptx";
+function parseNums(s,max){const o=[];for(const p of s.split(",").map(x=>x.trim()).filter(Boolean)){const r=p.match(/^(\d+)(?:\s*-\s*(\d+))?$/);if(!r)throw Error("Invalid number: "+p);for(let i=+r[1];i<=+(r[2]||r[1]);i++){if(i<1||i>max)throw Error(`Slide ${i} doesn't exist (file has ${max} slides).`);o.push(i)}}return o}
+const deckUI=(btn,fn,ph)=>`<div class="drop"><label for="deck">Choose PPTX file</label><input id="deck" type="file" accept=".pptx" onchange="run(loadDeck)"><div id="files" class="files"></div></div>${ph?`<input id="nums" style="width:100%" placeholder="${ph}">`:""}<button class="btn" style="margin-top:14px" onclick="run(${fn})">${btn}</button>`;
+function page(w){$("menu").style.display="none";$("header").style.display="none";cur=null;const t=$("tool");t.className="page active";
+ const T={create:["📊 Create PPT","Add slides (title + text), then download a real .pptx."],images:["🖼️ Images → PPT","Each image becomes one slide, fitted to 16:9."],merge:["🧩 Merge PPTs","Choose 2 or more PPTX files (any PowerPoint file). They merge in the order selected."],remove:["🗑️ Remove Slides","Open a PPTX, then type slide numbers or ranges to remove."],reorder:["🔀 Reorder Slides","Open a PPTX, then type the full new order."],info:["📄 PPT Info","Open a PPTX to inspect it."]}[w];
+ let b=`<div class="top"><button class="btn back" onclick="back()">← BACK</button><h2>${T[0]}</h2></div><div class="glass box"><p>${T[1]}</p>`;
+ if(w==="create")b+=`<input id="title" style="width:100%;margin-bottom:12px" placeholder="Slide title"><textarea id="body" placeholder="Slide text (each line becomes a paragraph)"></textarea><button class="btn" onclick="addSlide()">Add Slide</button> <button class="btn" onclick="run(downloadCreated)">Download PPTX</button> <button class="btn back" onclick="proj=[];renderList()">Clear</button><div id="slideList" class="result"></div>`;
+ if(w==="images")b+=`<div class="drop"><label for="imgs">Choose Images</label><input id="imgs" type="file" accept="image/*" multiple onchange="listFiles('imgs')"><div id="files" class="files"></div></div><button class="btn" onclick="run(imagesToPpt)">Create PPTX</button>`;
+ if(w==="merge")b+=`<div class="drop"><label for="ppts">Choose PPTX files</label><input id="ppts" type="file" accept=".pptx" multiple onchange="listFiles('ppts')"><div id="files" class="files"></div></div><button class="btn" onclick="run(mergePpts)">Merge & Download</button>`;
+ if(w==="remove")b+=deckUI("Remove & Download","doRemoveUI","Slides to remove, e.g. 2,5,7-9");
+ if(w==="reorder")b+=deckUI("Reorder & Download","doReorderUI","New order, e.g. 3,1,2,4");
+ if(w==="info")b+=deckUI("Show Info","showInfo");
+ t.innerHTML=b+`<div id="result"></div></div>`;if(w==="create")renderList()}
+function back(){$("tool").className="page";$("tool").innerHTML="";$("menu").style.display="grid";$("header").style.display="block"}
+function addSlide(){const t=$("title").value.trim(),b=$("body").value.trim();if(!t&&!b)return show("Type a title or some text first.");proj.push({title:t||"Untitled Slide",body:b});$("title").value=$("body").value="";renderList()}
+function renderList(){$("slideList").innerHTML=proj.length?proj.map((s,i)=>`<div class="li"><span>${i+1}. ${esc(s.title)}${s.body?" — "+esc(s.body.split("\n")[0].slice(0,60)):""}</span><button onclick="proj.splice(${i},1);renderList()">✕</button></div>`).join(""):"No slides yet."}
+function listFiles(id){$("files").textContent=[...$(id).files].map((f,i)=>`${i+1}. ${f.name}`).join("\n")}
+const downloadCreated=async()=>{dl(buildDeck(proj),"PPT_Toolbox_Presentation.pptx");show("Downloaded.",1)};
+async function imagesToPpt(){const fs=[...$("imgs").files];if(!fs.length)throw Error("Choose images first.");const s=[];for(const f of fs)s.push({title:f.name,img:await prep(f)});dl(buildDeck(s),"Images_Presentation.pptx");show(`Created ${s.length} slides.`,1)}
+async function openPptx(f){return zipRead(await f.arrayBuffer())}
+async function loadDeck(){const f=$("deck").files[0];if(!f)return;const m=await openPptx(f);const{list}=pres(m);cur={m,name:f.name,size:f.size,n:list.length};
+ $("files").textContent=f.name+` — ${list.length} slides\n`+list.map((s,i)=>`${i+1}. ${s.part&&m.has(s.part)?slideInfo(m,s.part).title:"?"}`).join("\n")}
+const need=()=>{if(!cur)throw Error("Choose a PPTX file first.")};
+async function doRemoveUI(){need();const n=parseNums($("nums").value,cur.n);if(!n.length)throw Error("Type slide numbers to remove.");const m=new Map(cur.m);doRemove(m,new Set(n));dl(zipWrite(m),outName());show(`Removed ${new Set(n).size} slide(s). Downloaded.`,1)}
+async function doReorderUI(){need();const o=parseNums($("nums").value,cur.n);if(o.length!==cur.n||new Set(o).size!==cur.n)throw Error(`Enter every slide number 1–${cur.n} exactly once.`);const m=new Map(cur.m);doReorder(m,o);dl(zipWrite(m),outName());show("Reordered. Downloaded.",1)}
+async function mergePpts(){const fs=[...$("ppts").files];if(fs.length<2)throw Error("Choose at least 2 PPTX files.");const base=await openPptx(fs[0]);pres(base);
+ for(let k=1;k<fs.length;k++)mergeInto(base,await openPptx(fs[k]),k);const n=pres(base).list.length;dl(zipWrite(base),"Merged_Presentation.pptx");show(`Merged ${fs.length} files → ${n} slides. Downloaded.`,1)}
+async function showInfo(){need();const m=cur.m,{doc,list}=pres(m),sz=tags(doc,"sldSz")[0],k=[...m.keys()],c=r=>k.filter(x=>r.test(x)).length;
+ let t=`File: ${cur.name}\nSize: ${(cur.size/1024).toFixed(1)} KB\nSlides: ${list.length}\n`;if(sz)t+=`Slide size: ${(sz.getAttribute("cx")/914400).toFixed(2)} × ${(sz.getAttribute("cy")/914400).toFixed(2)} in\n`;
+ t+=`Masters: ${c(/slideMasters\/[^/]+\.xml$/)} • Layouts: ${c(/slideLayouts\/[^/]+\.xml$/)} • Media files: ${c(/^ppt\/media\//)} • Notes: ${c(/notesSlides\/[^/]+\.xml$/)} • Charts: ${c(/charts\/[^/]+\.xml$/)}\n\n`;
+ list.forEach((s,i)=>{if(s.part&&m.has(s.part)){const x=slideInfo(m,s.part);t+=`${i+1}. ${x.title}  (${x.words} words)\n`}});show(t,1)}
+</script></body></html>
